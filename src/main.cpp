@@ -14,6 +14,8 @@ void setup()
 #endif
     esp_restart();
   }
+  
+  
   listDir(SPIFFS, "/", 0);
 
   InicializarVariables();
@@ -29,17 +31,17 @@ void setup()
  
 
   initServer();
-
+/*
   xTaskCreate(
       TaskRedWifi, "TaskRedWifi",
-      4096,
+      8192,
       NULL, 2,
-      NULL);
+      NULL);*/
 
   xTaskCreate(
       TaskLeerIdNFC, "TaskLeerIdNFC",
-      1024,
-      NULL, 3,
+      4096,
+      NULL, 2,
       NULL);
 }
 
@@ -147,7 +149,6 @@ void InicializarVariables()
 
   if (!SPIFFS.exists("/WebServer.html"))
   {
-    
     writeFile(SPIFFS, "/WebServer.html", (char *) answer.c_str());
   }
   
@@ -179,10 +180,11 @@ void procSSID(AsyncWebServerRequest *request)
   else
     Serial.println("La contraseña no fue modificada");
 
+  request->send(200, "text/plain", "RESTARTING IN 5 SECONDS");
+
   if (t)
   {
     Serial.println("Restarting in 5 seconds");
-    request->redirect("/");
     vTaskDelay(5000);
     
     ESP.restart();

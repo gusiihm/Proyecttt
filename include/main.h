@@ -9,6 +9,7 @@
 #include "FS.h"
 #include "SPIFFS.h"
 #include "SPIFF_fun.h"
+#include "FreeRTOSConfig.h"
 
 //definiciones de PN532
 #define PN532_SCK (18)
@@ -25,7 +26,21 @@ Adafruit_PN532 nfc(PN532_SS); // Línea enfocada para la comunicación por SPI
 static String SSID = "";
 static String PASSWORD = "";
 AsyncWebServer server(80);
-static String answer = "<!DOCTYPE html>\
+static String answer = "";
+
+
+//Declaracion de funciones/tareas
+void TaskLeerIdNFC(void *pvParameters);
+void TaskRedWifi(void *pvParameters);
+void handleConnectionRoot();
+void InicializarVariables();
+void procSSID(AsyncWebServerRequest *request);
+void modificarVar(String ssid, String pswd);
+void initServer();
+
+
+
+static String pagina = "<!DOCTYPE html>\
 <meta http-equiv='Content-Type' content='text/html; charset=UTF-8'/>\
 <html>\
     <body>\
@@ -47,12 +62,3 @@ static String answer = "<!DOCTYPE html>\
         </form>\
     </body>\
 </html>";
-
-//Declaracion de funciones/tareas
-void TaskLeerIdNFC(void *pvParameters);
-void TaskRedWifi(void *pvParameters);
-void handleConnectionRoot();
-void InicializarVariables();
-void procSSID(AsyncWebServerRequest *request);
-void modificarVar(String ssid, String pswd);
-void initServer();
