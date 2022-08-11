@@ -145,6 +145,13 @@ void InicializarVariables()
     writeFile(SPIFFS, "/PASS.txt", (char *)comando.c_str());
   }
 
+  if (!SPIFFS.exists("/WebServer.html"))
+  {
+    
+    writeFile(SPIFFS, "/WebServer.html", (char *) answer.c_str());
+  }
+  
+  answer = readFile(SPIFFS, "/WebServer.html");
   SSID = readFile(SPIFFS, "/SSID.txt");
   PASSWORD = readFile(SPIFFS, "/PASS.txt");
 }
