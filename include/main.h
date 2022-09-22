@@ -25,6 +25,7 @@ Adafruit_PN532 nfc(PN532_SS); // Línea enfocada para la comunicación por SPI
 //variables para la red
 static String SSID = "";
 static String PASSWORD = "";
+static String IP = "";
 AsyncWebServer server(80);
 static String answer = "";
 
@@ -38,7 +39,30 @@ void procSSID(AsyncWebServerRequest *request);
 void modificarVar(String ssid, String pswd);
 void initServer();
 
+//poner para que se redirija a la página principal con un contador y un botón si no se redirije automáticamente
 
+static String noModif = "<!DOCTYPE html>\
+<meta http-equiv='refresh' content='5; url=" + IP + "/' />\
+<html>\
+    <body>\
+        <h1>Hola desde ESP32 - Modo Punto de Acceso(AP)</h1>\
+        <form action='/changeSSID' method='post'>\
+            <ul>\
+                <li>\
+                <label> SSID:</label>\
+                <input type='text' name='ssid'>\
+                </li>\
+                <li>\
+                <label>Nueva contraseña: </label>\
+                <input type='password' name='pass'>\
+                </li>\
+                <li class='button'>\
+                <button type='submit'> Enviar nueva configuración </button>\
+                </li>\
+            </ul>\
+        </form>\
+    </body>\
+</html>";
 
 static String pagina = "<!DOCTYPE html>\
 <meta http-equiv='Content-Type' content='text/html; charset=UTF-8'/>\

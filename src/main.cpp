@@ -119,6 +119,8 @@ void initServer()
   server.onNotFound([](AsyncWebServerRequest *request) {
       request->send(400, "text/plain", "Not found");
    });
+
+  IP = myIP.toString();
   server.begin();
 
   Serial.print("SSID: ");
@@ -143,7 +145,7 @@ void InicializarVariables()
   }
   if (!SPIFFS.exists("/PASS.txt"))
   {
-    String comando = "hola1234";
+    String comando = "ConfigNFC";
     writeFile(SPIFFS, "/PASS.txt", (char *)comando.c_str());
   }
 
@@ -170,23 +172,26 @@ void procSSID(AsyncWebServerRequest *request)
   }
   else
     Serial.println("SSID no fue modificado");
+  
   String PASS = request->arg("pass");//server.arg("pass");
-  if (!PASS.isEmpty())
+  if (!PASS.isEmpty() || PASS.length() >= 8 )
   {
     writeFile(SPIFFS, "/PASS.txt", (char *)PASS.c_str());
     Serial.println("La contraseña fue cambiada correctamente");
     t = true;
   }
   else
-    Serial.println("La contraseña no fue modificada");
-
-  request->send(200, "text/plain", "RESTARTING IN 5 SECONDS");
+    Serial.println("La contraseña no fue modificada, la contraseña es menor de 8 caracteres");
 
   if (t)
   {
+    request->send(200, "text/plain", "RESTARTING IN 5 SECONDS");
     Serial.println("Restarting in 5 seconds");
     vTaskDelay(5000);
     
     ESP.restart();
   }
+  else
+    request->send(200, "text/plain", noModif);
+
 }
