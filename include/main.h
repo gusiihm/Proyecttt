@@ -28,19 +28,19 @@ static String PASSWORD = "";
 static String IP = "";
 AsyncWebServer server(80);
 static String answer = "";
+static String answerNoModif = "";
 
 
 //Declaracion de funciones/tareas
 void TaskLeerIdNFC(void *pvParameters);
 void TaskRedWifi(void *pvParameters);
-void handleConnectionRoot();
 void InicializarVariables();
 void procSSID(AsyncWebServerRequest *request);
 void modificarVar(String ssid, String pswd);
 void initServer();
 
-//poner para que se redirija a la página principal con un contador y un botón si no se redirije automáticamente
 
+//para redirigir
 static String noModif = "<!DOCTYPE html>\
 <meta http-equiv='refresh' content='5; url=" + IP + "/' />\
 <html>\

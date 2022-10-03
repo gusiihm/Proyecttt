@@ -41,7 +41,7 @@ void setup()
   xTaskCreate(
       TaskLeerIdNFC, "TaskLeerIdNFC",
       4096,
-      NULL, 2,
+      NULL, 0,
       NULL);
 }
 
@@ -91,7 +91,7 @@ void TaskLeerIdNFC(void *pvParameters)
         Serial.print(uid[i], HEX);
       }
       Serial.println("");
-      vTaskDelay(1000); // Espera de 1 segundo
+      vTaskDelay(500); // Espera de 1/2 segundo, seguramente tenga que cambiarlo
     }
   }
 }
@@ -111,29 +111,22 @@ void initServer()
   
   WiFi.softAP(SSID.c_str(), PASSWORD.c_str());
   IPAddress myIP = WiFi.softAPIP();
-  
-
+ 
   server.serveStatic("/", SPIFFS, "/").setDefaultFile("WebServer.html");
   //server.on("/", handleConnectionRoot);
   server.on("/changeSSID", HTTP_POST, procSSID);
   server.onNotFound([](AsyncWebServerRequest *request) {
       request->send(400, "text/plain", "Not found");
    });
-
-  IP = myIP.toString();
+  
+  IP =  myIP.toString();
   server.begin();
-
   Serial.print("SSID: ");
   Serial.println(SSID);
   Serial.print("IP address: ");
-  Serial.println(myIP);
+  Serial.println(IP);
   
 }
-/*
-void handleConnectionRoot()
-{
-  server.send(200, "text/html", answer);
-}*/
 
 void InicializarVariables()
 {
@@ -148,12 +141,17 @@ void InicializarVariables()
     String comando = "ConfigNFC";
     writeFile(SPIFFS, "/PASS.txt", (char *)comando.c_str());
   }
-
   if (!SPIFFS.exists("/WebServer.html"))
   {
     writeFile(SPIFFS, "/WebServer.html", (char *) answer.c_str());
   }
-  
+
+  if (!SPIFFS.exists("/NoModif.html"))
+  {
+    writeFile(SPIFFS, "/NoModif.html", (char *) noModif.c_str());
+  }
+
+  answerNoModif = readFile(SPIFFS, "/NoModif.html");
   answer = readFile(SPIFFS, "/WebServer.html");
   SSID = readFile(SPIFFS, "/SSID.txt");
   PASSWORD = readFile(SPIFFS, "/PASS.txt");
@@ -174,14 +172,16 @@ void procSSID(AsyncWebServerRequest *request)
     Serial.println("SSID no fue modificado");
   
   String PASS = request->arg("pass");//server.arg("pass");
-  if (!PASS.isEmpty() || PASS.length() >= 8 )
-  {
+  if (PASS.isEmpty() )
+    Serial.println("La contraseña no fue modificada");
+  else if (PASS.length() < 8)
+    Serial.println("La contraseña es menor de 8 caracteres");
+  else{
     writeFile(SPIFFS, "/PASS.txt", (char *)PASS.c_str());
     Serial.println("La contraseña fue cambiada correctamente");
     t = true;
   }
-  else
-    Serial.println("La contraseña no fue modificada, la contraseña es menor de 8 caracteres");
+    
 
   if (t)
   {
@@ -192,6 +192,6 @@ void procSSID(AsyncWebServerRequest *request)
     ESP.restart();
   }
   else
-    request->send(200, "text/plain", noModif);
+    request->send(200, "text/html", answerNoModif);
 
 }
