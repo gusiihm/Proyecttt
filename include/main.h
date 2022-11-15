@@ -10,17 +10,17 @@
 #include "SPIFFS.h"
 #include "SPIFF_fun.h"
 #include "FreeRTOSConfig.h"
+#include <PN532.h>
+#include <PN532_HSU.h>
 
-//definiciones de PN532
-#define PN532_SCK (18)
-#define PN532_MOSI (23)
-#define PN532_SS (5)
-#define PN532_MISO (19)
 #define FORMAT_SPIFFS_IF_FAILED true
 
 //Variables PN532
 uint8_t DatoRecibido[4]; // Para almacenar los datos
-Adafruit_PN532 nfc(PN532_SS); // Línea enfocada para la comunicación por SPI
+PN532_HSU pn532hsu(Serial2); // Declara objeto de comunicação utilizando Serial2
+PN532 nfc(pn532hsu);
+uint8_t data1[16] = {0x48, 0x4f, 0x4c, 0x41, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // HOLA en hex
+
 
 //variables para la red
 static String SSID = "";
@@ -38,7 +38,6 @@ void InicializarVariables();
 void procSSID(AsyncWebServerRequest *request);
 void modificarVar(String ssid, String pswd);
 void initServer();
-
 
 //para redirigir
 static String noModif = "<!DOCTYPE html>\

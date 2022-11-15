@@ -14,8 +14,7 @@ void setup()
 #endif
     esp_restart();
   }
-  
-  
+
   listDir(SPIFFS, "/", 0);
 
   InicializarVariables();
@@ -28,15 +27,13 @@ void setup()
     writeFile(SPIFFS, "/wifi.txt", (char *)comando.c_str());
   }
 
- 
-
   initServer();
-/*
-  xTaskCreate(
-      TaskRedWifi, "TaskRedWifi",
-      8192,
-      NULL, 2,
-      NULL);*/
+  /*
+    xTaskCreate(
+        TaskRedWifi, "TaskRedWifi",
+        8192,
+        NULL, 2,
+        NULL);*/
 
   xTaskCreate(
       TaskLeerIdNFC, "TaskLeerIdNFC",
@@ -47,51 +44,74 @@ void setup()
 
 void loop() {}
 
-//TAREAS
+// TAREAS
 void TaskLeerIdNFC(void *pvParameters)
 {
-
-  nfc.begin(); // Comienza la comunicación del PN532
-
-  uint32_t versiondata = nfc.getFirmwareVersion(); // Obtiene información de la placa
-
-  Serial.print("Chip encontrado PN5");
-  Serial.println((versiondata >> 24) & 0xFF, HEX); // Imprime en el serial que version de Chip es el lector
-
-  // Establezca el número máximo de reintentos para leer de una tarjeta.
-  // Esto evita que tengamos que esperar eternamente por una tarjeta,
-  // que es el comportamiento predeterminado del PN532.
-  nfc.setPassiveActivationRetries(0xFF);
-
-  nfc.SAMConfig(); // Configura la placa para realizar la lectura
-
-  Serial.println("Esperando una tarjeta ISO14443A ...");
-
-  boolean LeeTarjeta;                    // Variable para almacenar la detección de una tarjeta
-  uint8_t uid[] = {0, 0, 0, 0, 0, 0, 0}; // Búfer para almacenar el UID devuelto
-  uint8_t LongitudUID;                   // Variable para almacenar la longitud del UID de la tarjeta
-
+  nfc.begin(); // Inicializa o modulo
+  uint32_t versiondata = nfc.getFirmwareVersion(); // Obtém informações sobre o modulo
+  if (!versiondata)
+  { // Verifica se a placa foi encontrada
+    Serial.print("Placa PN53x no encontrada");
+    while (1)
+      ; // Loop infinito
+  }
+  Serial.print("Found chip PN5");
+  Serial.println((versiondata >> 24) & 0xFF, HEX);
+  Serial.print("Firmware ver. ");
+  Serial.print((versiondata >> 16) & 0xFF, DEC);
+  Serial.print('.');
+  Serial.println((versiondata >> 8) & 0xFF, DEC);
+  nfc.SAMConfig(); // Configura el módulo RFID para la lectura
+  Serial.println("Esperando tarjeta ISO14443A ...");
   for (;;)
   {
-    // Recepción y detección de los datos de la tarjeta y almacenamiento en la variable "LeeTarjeta"
-    LeeTarjeta = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, &uid[0], &LongitudUID);
+    uint8_t success;                       // Controle de sucesso
+    uint8_t uid[] = {0, 0, 0, 0, 0, 0, 0}; // Buffer UID
+    uint8_t uidLength;                     // Tamanho da UID (4 ou 7 bytes depende do cartão)
 
-    // Se detecto un tarjeta RFID
-    if (LeeTarjeta)
+    success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength); // Informacion do NFC
+
+    if (success)
     {
-      Serial.println("Tarjeta encontrada!");
-      Serial.print("Longitud del UID: ");
-      Serial.print(LongitudUID, DEC); // Imprime la longitud de los datos de la tarjeta en decimal
+      Serial.println("Found an ISO14443A card");
+      Serial.print("  UID Length: ");
+      Serial.print(uidLength, DEC);
       Serial.println(" bytes");
-      Serial.print("Valor del UID: ");
-      // Imprime los datos almacenados en la tarjeta en Hexadecimal
-      for (uint8_t i = 0; i < LongitudUID; i++)
-      {
-        Serial.print(" 0x");
-        Serial.print(uid[i], HEX);
-      }
+      Serial.print("  UID Value: ");
+      nfc.PrintHex(uid, uidLength); // Imprime el UID
       Serial.println("");
-      vTaskDelay(500); // Espera de 1/2 segundo, seguramente tenga que cambiarlo
+
+      if (uidLength == 4)
+      { // Verifica que la tarjeta es de 4 bytes
+        Serial.println("Tarjeta de 4 bytes");
+        uint8_t keya[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};                    // Clave A
+        uint8_t keyb[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};                    // Clave B
+        success = nfc.mifareclassic_AuthenticateBlock(uid, uidLength, 6, 1, keyb); // Verifica claves
+
+        if (success)
+        {
+          Serial.println("Sector 1 (Blocks 4..7) Autentificado");
+          uint8_t data[16];                                   // Declaracion de un array de tamaño 16
+          success = nfc.mifareclassic_ReadDataBlock(6, data); // Lectura bloque 6
+          vTaskDelay(200);
+          if (success)
+          {
+            Serial.println("Lectura realizada del bloque 4:");
+            nfc.PrintHexChar(data, 16); // Imprime lo que está escrito en el bloque 6
+            vTaskDelay(300);
+            Serial.println("");
+
+            Serial.println("Lectura de sector 1" + data[0]);
+            vTaskDelay(1000);
+          }
+          else
+            Serial.println("Ooops ... No es posible realizar la lectura, ¿la clave es correcta?");
+        }
+        else
+          Serial.println("Ooops ... Fallo en la autenticación, ¿la clave es correcta?");
+      }
+      Serial.println("Separe la tarjeta porfavor. Puede volver a acercarla en 3 segundos");
+      vTaskDelay(3000); // Espera 1s
     }
   }
 }
@@ -99,33 +119,32 @@ void TaskLeerIdNFC(void *pvParameters)
 void TaskRedWifi(void *pvParameters)
 {
   for (;;)
-    //server.handleClient();
+    ;
+  // server.handleClient();
   vTaskDelay(200);
 }
 
-//FUNCIONES DE AYUDA
+// FUNCIONES DE AYUDA
 void initServer()
 {
 
   Serial.println("Configuring access point...");
-  
+
   WiFi.softAP(SSID.c_str(), PASSWORD.c_str());
   IPAddress myIP = WiFi.softAPIP();
- 
+
   server.serveStatic("/", SPIFFS, "/").setDefaultFile("WebServer.html");
-  //server.on("/", handleConnectionRoot);
+  // server.on("/", handleConnectionRoot);
   server.on("/changeSSID", HTTP_POST, procSSID);
-  server.onNotFound([](AsyncWebServerRequest *request) {
-      request->send(400, "text/plain", "Not found");
-   });
-  
-  IP =  myIP.toString();
+  server.onNotFound([](AsyncWebServerRequest *request)
+                    { request->send(400, "text/plain", "Not found"); });
+
+  IP = myIP.toString();
   server.begin();
   Serial.print("SSID: ");
   Serial.println(SSID);
   Serial.print("IP address: ");
   Serial.println(IP);
-  
 }
 
 void InicializarVariables()
@@ -143,12 +162,12 @@ void InicializarVariables()
   }
   if (!SPIFFS.exists("/WebServer.html"))
   {
-    writeFile(SPIFFS, "/WebServer.html", (char *) answer.c_str());
+    writeFile(SPIFFS, "/WebServer.html", (char *)answer.c_str());
   }
 
   if (!SPIFFS.exists("/NoModif.html"))
   {
-    writeFile(SPIFFS, "/NoModif.html", (char *) noModif.c_str());
+    writeFile(SPIFFS, "/NoModif.html", (char *)noModif.c_str());
   }
 
   answerNoModif = readFile(SPIFFS, "/NoModif.html");
@@ -159,7 +178,7 @@ void InicializarVariables()
 
 void procSSID(AsyncWebServerRequest *request)
 {
-  String SSID1 = request->arg("ssid"); //server.arg("ssid");
+  String SSID1 = request->arg("ssid"); // server.arg("ssid");
   bool t = false;
 
   if (!SSID1.isEmpty())
@@ -170,28 +189,27 @@ void procSSID(AsyncWebServerRequest *request)
   }
   else
     Serial.println("SSID no fue modificado");
-  
-  String PASS = request->arg("pass");//server.arg("pass");
-  if (PASS.isEmpty() )
+
+  String PASS = request->arg("pass"); // server.arg("pass");
+  if (PASS.isEmpty())
     Serial.println("La contraseña no fue modificada");
   else if (PASS.length() < 8)
     Serial.println("La contraseña es menor de 8 caracteres");
-  else{
+  else
+  {
     writeFile(SPIFFS, "/PASS.txt", (char *)PASS.c_str());
     Serial.println("La contraseña fue cambiada correctamente");
     t = true;
   }
-    
 
   if (t)
   {
     request->send(200, "text/plain", "RESTARTING IN 5 SECONDS");
     Serial.println("Restarting in 5 seconds");
     vTaskDelay(5000);
-    
+
     ESP.restart();
   }
   else
     request->send(200, "text/html", answerNoModif);
-
 }
