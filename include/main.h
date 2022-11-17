@@ -1,4 +1,4 @@
-//Librerias
+// Librerias
 #include "Arduino.h"
 #include <Wire.h>
 #include <SPI.h> //Librería para comunicación SPI
@@ -15,14 +15,13 @@
 
 #define FORMAT_SPIFFS_IF_FAILED true
 
-//Variables PN532
-uint8_t DatoRecibido[4]; // Para almacenar los datos
+// Variables PN532
+uint8_t DatoRecibido[4];     // Para almacenar los datos
 PN532_HSU pn532hsu(Serial2); // Declara objeto de comunicação utilizando Serial2
 PN532 nfc(pn532hsu);
 uint8_t data1[16] = {0x48, 0x4f, 0x4c, 0x41, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // HOLA en hex
 
-
-//variables para la red
+// variables para la red
 static String SSID = "";
 static String PASSWORD = "";
 static String IP = "";
@@ -30,58 +29,99 @@ AsyncWebServer server(80);
 static String answer = "";
 static String answerNoModif = "";
 
+// variables del Kit
+static String ZONA = "";
+static String PUERTA = "";
 
-//Declaracion de funciones/tareas
-void TaskLeerIdNFC(void *pvParameters);
+// Declaracion de funciones/tareas
+void TaskLeerNFC(void *pvParameters);
 void TaskRedWifi(void *pvParameters);
 void InicializarVariables();
 void procSSID(AsyncWebServerRequest *request);
+void procLocation(AsyncWebServerRequest *request);
 void modificarVar(String ssid, String pswd);
 void initServer();
 
-//para redirigir
+// para redirigir
 static String noModif = "<!DOCTYPE html>\
-<meta http-equiv='refresh' content='5; url=" + IP + "/' />\
+<meta http-equiv='refresh' content='5; url=" +
+                        IP + "/' />\
 <html>\
-    <body>\
-        <h1>Hola desde ESP32 - Modo Punto de Acceso(AP)</h1>\
-        <form action='/changeSSID' method='post'>\
-            <ul>\
-                <li>\
+<body>\
+    <h2>CONFIGURACIÓN KIT CERRADURAS NFC</h2>\
+    <form action='/changeSSID' method='post'>\
+        <ul>\
+            <li>\
                 <label> SSID:</label>\
                 <input type='text' name='ssid'>\
-                </li>\
-                <li>\
+            </li>\
+            <li>\
                 <label>Nueva contraseña: </label>\
                 <input type='password' name='pass'>\
-                </li>\
-                <li class='button'>\
+            </li>\
+            <li class='button'>\
                 <button type='submit'> Enviar nueva configuración </button>\
-                </li>\
-            </ul>\
-        </form>\
-    </body>\
+            </li>\
+        </ul>\
+    </form>\
+    <br>\
+    <form action='/location' method='post'>\
+        <h3> UBICACIÓN </h3>\
+        <ul>\
+            <li>\
+                <label>Escoge una zona:</label>\
+                <input type='number' name='zone' value='1' min='0' max='99' />\
+            </li>\
+            <li>\
+                <label>Escoge una puerta:</label>\
+                <input type='number' name='door' value='1' min='0' max='99' />\
+                </select>\
+            </li>\
+            <li class='button'>\
+                <button type='submit'> ELEGIR </button>\
+            </li>\
+        </ul>\
+    </form>\
+</body>\
 </html>";
 
 static String pagina = "<!DOCTYPE html>\
-<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'/>\
+<meta http-equiv='Content-Type' content='text/html; charset=UTF-8' />\
 <html>\
-    <body>\
-        <h1>Hola desde ESP32 - Modo Punto de Acceso(AP)</h1>\
-        <form action='/changeSSID' method='post'>\
-            <ul>\
-                <li>\
+<body>\
+    <h2>CONFIGURACIÓN KIT CERRADURAS NFC</h2>\
+    <form action='/changeSSID' method='post'>\
+        <ul>\
+            <li>\
                 <label> SSID:</label>\
                 <input type='text' name='ssid'>\
-                </li>\
-                <li>\
+            </li>\
+            <li>\
                 <label>Nueva contraseña: </label>\
                 <input type='password' name='pass'>\
-                </li>\
-                <li class='button'>\
+            </li>\
+            <li class='button'>\
                 <button type='submit'> Enviar nueva configuración </button>\
-                </li>\
-            </ul>\
-        </form>\
-    </body>\
+            </li>\
+        </ul>\
+    </form>\
+    <br>\
+    <form action='/location' method='post'>\
+        <h3> UBICACIÓN </h3>\
+        <ul>\
+            <li>\
+                <label>Escoge una zona:</label>\
+                <input type='number' name='zone' value='1' min='0' max='99' />\
+            </li>\
+            <li>\
+                <label>Escoge una puerta:</label>\
+                <input type='number' name='door' value='1' min='0' max='99' />\
+                </select>\
+            </li>\
+            <li class='button'>\
+                <button type='submit'> ELEGIR </button>\
+            </li>\
+        </ul>\
+    </form>\
+</body>\
 </html>";

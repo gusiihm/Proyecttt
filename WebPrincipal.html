@@ -1,22 +1,40 @@
 <!DOCTYPE html>
-<meta http-equiv='Content-Type' content='text/html; charset=UTF-8'/>
+<meta http-equiv='Content-Type' content='text/html; charset=UTF-8' />
 <html>
-    <body>
-        <h1>CONFIGURACIÓNN</h1>
-        <form action='/changeSSID' method='post'>
-            <ul>
-                <li>
+<body>
+    <h2>CONFIGURACIÓN KIT CERRADURAS NFC</h2>
+    <form action='/changeSSID' method='post'>
+        <ul>
+            <li>
                 <label> SSID:</label>
                 <input type='text' name='ssid'>
-                </li>
-                <li>
+            </li>
+            <li>
                 <label>Nueva contraseña: </label>
                 <input type='password' name='pass'>
-                </li>
-                <li class='button'>
+            </li>
+            <li class='button'>
                 <button type='submit'> Enviar nueva configuración </button>
-                </li>
-            </ul>
-        </form>
-    </body>
+            </li>
+        </ul>
+    </form>
+    <br>
+    <form action='/location' method="'post">
+        <h3> UBICACIÓN </h3>
+        <ul>
+            <li>
+                <label>Escoge una zona:</label>
+                <input type="number" name="zone" value="1" min="0" max="99" />
+            </li>
+            <li>
+                <label>Escoge una puerta:</label>
+                <input type="number" name="door" value="1" min="0" max="99" />
+                </select>
+            </li>
+            <li class='button'>
+                <button type='submit'> ELEGIR </button>
+            </li>
+        </ul>
+    </form>
+</body>
 </html>
