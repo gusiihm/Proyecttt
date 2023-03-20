@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <meta http-equiv='Content-Type' content='text/html; charset=UTF-8' />
 <html>
+
 <body>
     <h2>CONFIGURACIÓN KIT CERRADURAS NFC</h2>
     <form action='/changeSSID' method='post'>
@@ -13,28 +14,44 @@
                 <label>Nueva contraseña: </label>
                 <input type='password' name='pass'>
             </li>
-            <li class='button'>
+            <li>
                 <button type='submit'> Enviar nueva configuración </button>
             </li>
         </ul>
     </form>
     <br>
-    <form action='/location' method="'post">
+    <form action='/location' method='post'>
         <h3> UBICACIÓN </h3>
         <ul>
             <li>
                 <label>Escoge una zona:</label>
-                <input type="number" name="zone" value="1" min="0" max="99" />
+                <input type='number' name='zone' value='1' min="0" max='99' />
             </li>
             <li>
                 <label>Escoge una puerta:</label>
-                <input type="number" name="door" value="1" min="0" max="99" />
+                <input type='number' name='door' value='1' min='0' max='99' />
                 </select>
             </li>
-            <li class='button'>
+            <li>
                 <button type='submit'> ELEGIR </button>
             </li>
         </ul>
     </form>
+    <br>
+    <h3> CREAR TARJETA NFC </h3>
+    <div>
+        <ul>
+            <li>
+                <form action='/createNFC' method='post'>
+                    <button type='submit'> PARA PUERTA </button>
+                </form>
+            </li>
+            <li>
+                <form action='/createNFCZona' method='post'>
+                    <button type='submit'> PARA ZONA </button>
+                </form>
+            </li>
+        </ul>
+    </div>
 </body>
 </html>

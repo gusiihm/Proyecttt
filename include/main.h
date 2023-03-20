@@ -35,57 +35,25 @@ static String PUERTA = "";
 
 // Declaracion de funciones/tareas
 void TaskLeerNFC(void *pvParameters);
-void TaskRedWifi(void *pvParameters);
 void InicializarVariables();
 void procSSID(AsyncWebServerRequest *request);
 void procLocation(AsyncWebServerRequest *request);
-void modificarVar(String ssid, String pswd);
+void procCreateNFC(AsyncWebServerRequest *request);
+void procCreateNFCZone(AsyncWebServerRequest *request);
 void initServer();
+//void modificarVar(String ssid, String pswd);
 
 // para redirigir
 static String noModif = "<!DOCTYPE html>\
-<meta http-equiv='refresh' content='5; url=" +
-                        IP + "/' />\
+<meta http-equiv='refresh' content='1; url=" + IP + "/' />\
 <html>\
 <body>\
-    <h2>CONFIGURACIÓN KIT CERRADURAS NFC</h2>\
-    <form action='/changeSSID' method='post'>\
-        <ul>\
-            <li>\
-                <label> SSID:</label>\
-                <input type='text' name='ssid'>\
-            </li>\
-            <li>\
-                <label>Nueva contraseña: </label>\
-                <input type='password' name='pass'>\
-            </li>\
-            <li class='button'>\
-                <button type='submit'> Enviar nueva configuración </button>\
-            </li>\
-        </ul>\
-    </form>\
-    <br>\
-    <form action='/location' method='post'>\
-        <h3> UBICACIÓN </h3>\
-        <ul>\
-            <li>\
-                <label>Escoge una zona:</label>\
-                <input type='number' name='zone' value='1' min='0' max='99' />\
-            </li>\
-            <li>\
-                <label>Escoge una puerta:</label>\
-                <input type='number' name='door' value='1' min='0' max='99' />\
-                </select>\
-            </li>\
-            <li class='button'>\
-                <button type='submit'> ELEGIR </button>\
-            </li>\
-        </ul>\
-    </form>\
+    <h2>REDIRIGIENDO...</h2>\
 </body>\
 </html>";
 
-static String pagina = "<!DOCTYPE html>\
+//PONER PARA QUE EL VALOR DE LA PUERTA Y DE LA ZONA SE MUESTRE EL QUE ES
+static String pagina = "<!DOCTYPE html >\
 <meta http-equiv='Content-Type' content='text/html; charset=UTF-8' />\
 <html>\
 <body>\
@@ -100,7 +68,7 @@ static String pagina = "<!DOCTYPE html>\
                 <label>Nueva contraseña: </label>\
                 <input type='password' name='pass'>\
             </li>\
-            <li class='button'>\
+            <li>\
                 <button type='submit'> Enviar nueva configuración </button>\
             </li>\
         </ul>\
@@ -118,10 +86,26 @@ static String pagina = "<!DOCTYPE html>\
                 <input type='number' name='door' value='1' min='0' max='99' />\
                 </select>\
             </li>\
-            <li class='button'>\
+            <li>\
                 <button type='submit'> ELEGIR </button>\
             </li>\
         </ul>\
     </form>\
+    <br>\
+	<h3> CREAR TARJETA NFC </h3>\
+    <div>\
+        <ul>\
+            <li>\
+                <form action='/createNFC' method='post'>\
+                    <button type='submit'> PARA PUERTA </button>\
+                </form>\
+            </li>\
+            <li>\
+                <form action='/createNFCZona' method='post'>\
+                    <button type='submit'> PARA ZONA </button>\
+                </form>\
+            </li>\
+        </ul>\
+    </div>\
 </body>\
 </html>";
