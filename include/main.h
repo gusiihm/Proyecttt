@@ -19,7 +19,6 @@
 uint8_t DatoRecibido[4];     // Para almacenar los datos
 PN532_HSU pn532hsu(Serial2); // Declara objeto de comunicação utilizando Serial2
 PN532 nfc(pn532hsu);
-uint8_t data1[16] = {0x48, 0x4f, 0x4c, 0x41, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // HOLA en hex
 
 // variables para la red
 static String SSID = "";
@@ -32,32 +31,136 @@ static String answerNoModif = "";
 // variables del Kit
 static String ZONA = "";
 static String PUERTA = "";
+uint8_t CONTRASENA[16] = {0x03, 0x35, 0xd1, 0x01, 0x31, 0x55, 0x00, 0x45, 0x73, 0x74, 0x6f, 0x45, 0x73, 0x20, 0x70, 0x61};
 
 // Declaracion de funciones/tareas
 void TaskLeerNFC(void *pvParameters);
+void TaskWriteNFC(void *pvParameters);
+xTaskHandle xLeerNFC;
+xTaskHandle xWriteNFC;
 void InicializarVariables();
 void procSSID(AsyncWebServerRequest *request);
 void procLocation(AsyncWebServerRequest *request);
 void procCreateNFC(AsyncWebServerRequest *request);
-void procCreateNFCZone(AsyncWebServerRequest *request);
 void initServer();
-//void modificarVar(String ssid, String pswd);
+void handleConnectionRoot(AsyncWebServerRequest *request);
+int VerificaPass(PN532 nfc, uint8_t uid[7], uint8_t uidLength, uint8_t key[6]);
 
 // para redirigir
-static String noModif = "<!DOCTYPE html>\
-<meta http-equiv='refresh' content='1; url=" + IP + "/' />\
+static String paginaNoModif = "<!DOCTYPE html>\
+<meta http-equiv='refresh' content='1; url=" +
+                              IP + "/' />\
 <html>\
 <body>\
     <h2>REDIRIGIENDO...</h2>\
 </body>\
 </html>";
 
-//PONER PARA QUE EL VALOR DE LA PUERTA Y DE LA ZONA SE MUESTRE EL QUE ES
-static String pagina = "<!DOCTYPE html >\
-<meta http-equiv='Content-Type' content='text/html; charset=UTF-8' />\
+static String pagTjPass = "<!DOCTYPE html>\
+<meta http-equiv='refresh' content='10; url=" +
+                              IP + "/' />\
 <html>\
 <body>\
-    <h2>CONFIGURACIÓN KIT CERRADURAS NFC</h2>\
+    <h2>Esperando tarjeta NFC. Acerque la tarjeta...</h2>\
+</body>\
+</html>";
+
+// PONER PARA QUE EL VALOR DE LA PUERTA Y DE LA ZONA SE MUESTRE EL QUE ES
+static String pagina = "<!DOCTYPE html >\
+<html>\
+<head>\
+    <meta http-equiv='Content-Type' content='text/html; charset=UTF-8' />\
+    <style>\
+		body {\
+			font-family: Arial, sans-serif;\
+			background-color: #f2f2f2;\
+			margin: 0;\
+			padding: 0;\
+		}\
+		h1 {\
+			font-size: 32px;\
+			font-weight: bold;\
+			text-align: center;\
+			margin-top: 50px;\
+			margin-bottom: 20px;\
+		}\
+		form {\
+			background-color: #ffffff;\
+			padding: 20px;\
+			border-radius: 10px;\
+			box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);\
+			max-width: 500px;\
+			margin: 0 auto;\
+		}\
+		form ul {\
+			list-style-type: none;\
+			padding: 0;\
+			margin: 0;\
+		}\
+		form li {\
+			margin-bottom: 10px;\
+		}\
+		form label {\
+			display: inline-block;\
+			width: 150px;\
+			font-weight: bold;\
+			margin-right: 10px;\
+		}\
+		form input[type='text'],\
+		form input[type='password'],\
+		form input[type='number'] {\
+			display: block;\
+			width: 100%;\
+			padding: 10px;\
+			border: 1px solid #ccc;\
+			border-radius: 5px;\
+			box-sizing: border-box;\
+			font-size: 16px;\
+			margin-top: 5px;\
+		}\
+		form button[type='submit'] {\
+			background-color: #007bff;\
+			color: #ffffff;\
+			padding: 10px 20px;\
+			border: none;\
+			border-radius: 5px;\
+			font-size: 16px;\
+			cursor: pointer;\
+			margin-top: 10px;\
+		}\
+		form button[type='submit']:hover {\
+			background-color: #0062cc;\
+		}\
+		h3 {\
+			font-size: 20px;\
+			font-weight: bold;\
+			margin-top: 30px;\
+			margin-bottom: 10px;\
+			text-align: center;\
+		}\
+		div {\
+			display: flex;\
+			flex-wrap: wrap;\
+			justify-content: space-between;\
+			max-width: 500px;\
+			margin: 0 auto;\
+			margin-top: 20px;\
+		}\
+		div form {\
+			flex-basis: 48%;\
+			background-color: #ffffff;\
+			padding: 20px;\
+			border-radius: 10px;\
+			box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);\
+			margin-bottom: 20px;\
+		}\
+		div form button[type='submit'] {\
+			width: 100%;\
+		}\
+	</style>\
+<head/>\
+<body>\
+    <h1>CONFIGURACIÓN KIT CERRADURAS NFC</h1>\
     <form action='/changeSSID' method='post'>\
         <ul>\
             <li>\
@@ -68,9 +171,7 @@ static String pagina = "<!DOCTYPE html >\
                 <label>Nueva contraseña: </label>\
                 <input type='password' name='pass'>\
             </li>\
-            <li>\
                 <button type='submit'> Enviar nueva configuración </button>\
-            </li>\
         </ul>\
     </form>\
     <br>\
@@ -79,33 +180,36 @@ static String pagina = "<!DOCTYPE html >\
         <ul>\
             <li>\
                 <label>Escoge una zona:</label>\
-                <input type='number' name='zone' value='1' min='0' max='99' />\
+                <input type='number' name='zone' value='1' min='1' max='99' required/>\
             </li>\
             <li>\
                 <label>Escoge una puerta:</label>\
-                <input type='number' name='door' value='1' min='0' max='99' />\
-                </select>\
+                <input type='number' name='door' value='1' min='1' max='99' required/>\
             </li>\
-            <li>\
                 <button type='submit'> ELEGIR </button>\
-            </li>\
         </ul>\
     </form>\
     <br>\
 	<h3> CREAR TARJETA NFC </h3>\
-    <div>\
+    <form action='/createNFC' method='post'>\
         <ul>\
+            <input type='hidden' name='type' value='2' />\
             <li>\
-                <form action='/createNFC' method='post'>\
-                    <button type='submit'> PARA PUERTA </button>\
-                </form>\
+                <label>Configurar tarjeta con contraseña</label>\
+                <input type='text' name='pass' minlength='8' maxlength='16' required />\
             </li>\
-            <li>\
-                <form action='/createNFCZona' method='post'>\
-                    <button type='submit'> PARA ZONA </button>\
-                </form>\
-            </li>\
+            <button type='submit'> AÑADIR </button>\
         </ul>\
+    </form>\
+    <div>\
+        <form action='/createNFC' method='post'>\
+            <input type='hidden' name='type' value='0'/>\
+            <button type='submit'> PARA PUERTA </button>\
+        </form>\
+        <form action='/createNFC' method='post'>\
+            <input type='hidden' name='type' value='1'/>\
+            <button type='submit'> PARA ZONA </button>\
+        </form>\
     </div>\
 </body>\
 </html>";
