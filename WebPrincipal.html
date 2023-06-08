@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
 	<meta http-equiv='Content-Type' content='text/html; charset=UTF-8' />
 	<style>
@@ -57,6 +58,21 @@
 			margin-top: 5px;
 		}
 
+		form input[type='button'] {
+			background-color: #007bff;
+			color: #ffffff;
+			padding: 10px 20px;
+			border: none;
+			border-radius: 5px;
+			font-size: 16px;
+			cursor: pointer;
+			margin-top: 10px;
+		}
+
+		form button[type='button']:hover {
+			background-color: #0062cc;
+		}
+
 		form button[type='submit'] {
 			background-color: #007bff;
 			color: #ffffff;
@@ -102,7 +118,25 @@
 			width: 100%;
 		}
 	</style>
+	<script>
+		function validateHexInput(input) {
+			var inputValue = input.value;
+			var filteredValue = inputValue.replace(/[^a-fA-F0-9]/g, '');
+
+			input.value = filteredValue.toUpperCase();
+		}
+		function validaMin() {
+			if (document.getElementById("hexText").value.length < 24) {
+				alert('ingrese un nombre de minimo 8 caracteres');
+				return false;
+			} else {
+				document.changePass.submit();
+			}
+		}
+	</script>
+
 </head>
+
 <body>
 	<h1>CONFIGURACIÓN KIT CERRADURAS NFC</h1>
 	<form action='/changeSSID' method='post'>
@@ -119,46 +153,32 @@
 		</ul>
 	</form>
 	<br>
-	<h3> UBICACIÓN </h3>
 	<form action='/location' method='post'>
+		<h3> UBICACIÓN </h3>
 		<ul>
 			<li>
 				<label>Escoge una zona:</label>
-				<input type='number' name='zone' value='1' min="0" max='99' />
+				<input type='number' name='zone' value='1' min='1' max='254' required />
 			</li>
 			<li>
 				<label>Escoge una puerta:</label>
-				<input type='number' name='door' value='1' min='0' max='99' />
-			</li>
-			<li>
-				<label>Menor planta del edificio</label>
-				<input type='number' name='floor' value='0' min='-99' max='0' />
+				<input type='number' name='door' value='1' min='1' max='254' required />
 			</li>
 			<button type='submit'> ELEGIR </button>
 		</ul>
 	</form>
 	<br>
-	<h3> CREAR TARJETA NFC </h3>
-	<form action='/createNFC' method='post'>
+	<h3> CONFIGURACIÓN PARA TARJETAS </h3>
+	<form action='/changePass' method='post' name="changePass">
 		<ul>
-			<input type='hidden' name='type' value='2' />
 			<li>
-				<label>Configurar tarjeta con contraseña</label>
-				<input type='text' name='pass' minlength="8" maxlength='16' required />
+				<label>Configurar contraseña en cerradura</label>
+				<input type='text' id='hexText' name='pass' oninput='validateHexInput(this)' minlength=24 maxlength=24
+					required />
 			</li>
-			<button type='submit'> AÑADIR </button>
+			<input type='button' onclick='validaMin()' value='AÑADIR' />
 		</ul>
 	</form>
-	<div>
-		<form action='/createNFC' method='post'>
-			<input type='hidden' name='type' value='0' />
-			<button type='submit'> PARA PUERTA </button>
-		</form>
-		<form action='/createNFC' method='post'>
-			<input type='hidden' name='type' value='1' />
-			<button type='submit'> PARA ZONA </button>
-		</form>
-	</div>
 </body>
 
-</html>
+</html>";

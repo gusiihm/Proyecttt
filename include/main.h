@@ -1,10 +1,11 @@
 // Librerias
 #include "Arduino.h"
 #include <Wire.h>
-#include <SPI.h> //Librería para comunicación SPI
+#include <SPI.h>
 #include <Adafruit_PN532.h>
 #include <WiFi.h>
 #include "ESPAsyncWebServer.h"
+#include "HTTPClient.h"
 #include <AsyncTCP.h>
 #include "FS.h"
 #include "SPIFFS.h"
@@ -12,6 +13,9 @@
 #include "FreeRTOSConfig.h"
 #include <PN532.h>
 #include <PN532_HSU.h>
+#include <stdlib.h>
+#include "Stepper.h"
+#include <Adafruit_NeoPixel.h>
 
 #define FORMAT_SPIFFS_IF_FAILED true
 
@@ -21,6 +25,10 @@ PN532_HSU pn532hsu(Serial2); // Declara objeto de comunicação utilizando Seria
 PN532 nfc(pn532hsu);
 
 // variables para la red
+static String RouterSsid = "Repe_Huawei";
+static String RouterPass = "657213861";
+static String serverAddress = "192.168.3.4";
+const int serverPort = 8080;
 static String SSID = "";
 static String PASSWORD = "";
 static String IP = "";
@@ -31,20 +39,36 @@ static String answerNoModif = "";
 // variables del Kit
 static String ZONA = "";
 static String PUERTA = "";
-uint8_t CONTRASENA[16] = {0x03, 0x35, 0xd1, 0x01, 0x31, 0x55, 0x00, 0x45, 0x73, 0x74, 0x6f, 0x45, 0x73, 0x20, 0x70, 0x61};
+String uidsVetados = "";
+uint8_t keyA[6]; // ClaveA
+uint8_t keyB[6]; // ClaveB
+uint8_t CONTRASENA[12];
+
+//LED
+Adafruit_NeoPixel pixels(1, 14, NEO_GRB + NEO_KHZ800);
+
+// Variables motor
+const int stepsPerRevolution = 400;
+Stepper myStepper(stepsPerRevolution, 33, 25, 26, 27);
+
 
 // Declaracion de funciones/tareas
 void TaskLeerNFC(void *pvParameters);
 void TaskWriteNFC(void *pvParameters);
+void TaskWaitToUids(void *pvParameters);
+void TaskRotarMotor(void *pvParameters);
 xTaskHandle xLeerNFC;
 xTaskHandle xWriteNFC;
 void InicializarVariables();
 void procSSID(AsyncWebServerRequest *request);
 void procLocation(AsyncWebServerRequest *request);
 void procCreateNFC(AsyncWebServerRequest *request);
+void procPass(AsyncWebServerRequest *request);
+void procContrasena(String input);
 void initServer();
+void updateUidsVetados();
+boolean estaUidVetado(uint8_t uid[], uint8_t UidLength);
 void handleConnectionRoot(AsyncWebServerRequest *request);
-int VerificaPass(PN532 nfc, uint8_t uid[7], uint8_t uidLength, uint8_t key[6]);
 
 // para redirigir
 static String paginaNoModif = "<!DOCTYPE html>\
@@ -118,6 +142,19 @@ static String pagina = "<!DOCTYPE html >\
 			font-size: 16px;\
 			margin-top: 5px;\
 		}\
+		form input[type='button'] {\
+			background-color: #007bff;\
+			color: #ffffff;\
+			padding: 10px 20px;\
+			border: none;\
+			border-radius: 5px;\
+			font-size: 16px;\
+			cursor: pointer;\
+			margin-top: 10px;\
+		}\
+		form button[type='button']:hover {\
+			background-color: #0062cc;\
+		}\
 		form button[type='submit'] {\
 			background-color: #007bff;\
 			color: #ffffff;\
@@ -158,7 +195,22 @@ static String pagina = "<!DOCTYPE html >\
 			width: 100%;\
 		}\
 	</style>\
-<head/>\
+	<script>\
+		function validateHexInput(input) {\
+			var inputValue = input.value;\
+			var filteredValue = inputValue.replace(/[^a-fA-F0-9]/g, '');\
+			input.value = filteredValue.toUpperCase();\
+		}\
+		function validaMin(){\
+			if(document.getElementById('hexText').value.length < 24){\
+				alert('ingrese un nombre de minimo 8 caracteres');\
+				return false;\
+			}else{\
+				document.changePass.submit();\
+			}\
+		}\
+	</script>\
+</head>\
 <body>\
     <h1>CONFIGURACIÓN KIT CERRADURAS NFC</h1>\
     <form action='/changeSSID' method='post'>\
@@ -180,36 +232,25 @@ static String pagina = "<!DOCTYPE html >\
         <ul>\
             <li>\
                 <label>Escoge una zona:</label>\
-                <input type='number' name='zone' value='1' min='1' max='99' required/>\
+                <input type='number' name='zone' value='1' min='1' max='254' required/>\
             </li>\
             <li>\
                 <label>Escoge una puerta:</label>\
-                <input type='number' name='door' value='1' min='1' max='99' required/>\
+                <input type='number' name='door' value='1' min='1' max='254' required/>\
             </li>\
                 <button type='submit'> ELEGIR </button>\
         </ul>\
     </form>\
     <br>\
-	<h3> CREAR TARJETA NFC </h3>\
-    <form action='/createNFC' method='post'>\
-        <ul>\
-            <input type='hidden' name='type' value='2' />\
-            <li>\
-                <label>Configurar tarjeta con contraseña</label>\
-                <input type='text' name='pass' minlength='8' maxlength='16' required />\
-            </li>\
-            <button type='submit'> AÑADIR </button>\
-        </ul>\
-    </form>\
-    <div>\
-        <form action='/createNFC' method='post'>\
-            <input type='hidden' name='type' value='0'/>\
-            <button type='submit'> PARA PUERTA </button>\
-        </form>\
-        <form action='/createNFC' method='post'>\
-            <input type='hidden' name='type' value='1'/>\
-            <button type='submit'> PARA ZONA </button>\
-        </form>\
-    </div>\
+	<h3> CONFIGURACIÓN PARA TARJETAS </h3>\
+    <form action='/changePass' method='post' name='changePass'>\
+		<ul>\
+			<li>\
+				<label>Configurar contraseña en cerradura</label>\
+				<input type='text' id='hexText' name='pass' oninput='validateHexInput(this)' minlength=24 maxlength=24 required />\
+			</li>\
+			<input type='button' onclick='validaMin()' value='AÑADIR' />\
+		</ul>\
+	</form>\
 </body>\
 </html>";

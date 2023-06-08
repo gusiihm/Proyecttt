@@ -2,6 +2,10 @@
 
 void setup()
 {
+  //PIXELES APAGADOS DE PRIMERAS
+  pixels.setPixelColor(0, pixels.Color(0, 0, 0));
+  pixels.show();
+
   Serial.begin(115200);
 
   SPIFFS.begin(true);
@@ -15,9 +19,6 @@ void setup()
 
   listDir(SPIFFS, "/", 0);
   //------ Borrar cuando se acabe de modificar la página web -----
-
-  if (SPIFFS.exists("/data.txt"))
-    deleteFile(SPIFFS, "/data.txt");
 
   deleteFile(SPIFFS, "/WebServer.html");
   deleteFile(SPIFFS, "/NoModif.html");
@@ -33,6 +34,23 @@ void setup()
       4096,
       NULL, 1,
       &xLeerNFC);
+  xTaskCreate(
+      TaskWaitToUids, "TaskWaitToUids",
+      4096,
+      NULL, 1,
+      NULL);
+    xTaskCreate(
+      TaskRotarMotor, "TaskRotarMotor",
+      4096,
+      NULL, 1,
+      NULL);
+
+  //se enciende azul para decir que está correcto
+  pixels.setPixelColor(0, pixels.Color(0, 0, 150));
+  pixels.show();
+  vTaskDelay(1000);
+  pixels.setPixelColor(0, pixels.Color(0, 0, 0));
+  pixels.show();
 }
 
 void loop() {}
@@ -71,78 +89,85 @@ void TaskLeerNFC(void *pvParameters)
       Serial.print("  UID Value: ");
       nfc.PrintHex(uid, uidLength); // Imprime el UID
       Serial.println("");
-
-      if (uidLength == 4)
+      if (uidLength == 4 && !estaUidVetado(uid, uidLength))
       { // Verifica que la tarjeta es de 4 bytes
-        Serial.println("Tarjeta de 4 bytes");
-        uint8_t key[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // Clave
         uint8_t fini = 0;
-        if (VerificaPass(nfc, uid, uidLength, key))
+        for (int i = 1; i <= 15; i++)
         {
-          for (int i = 1; i <= 15; i++)
+          // Imprime por consola sector y bloques
           {
-            // Imprime por consola sector y bloques
+            Serial.print("\n --------- \n Sector ");
+            Serial.print(i, DEC);
+            Serial.print("(Blocks ");
+            Serial.print(i * 4, DEC);
+            Serial.print("..");
+            Serial.print(i * 4 + 3, DEC);
+            Serial.println(") Autentificado");
+          }
+
+          success = nfc.mifareclassic_AuthenticateBlock(uid, uidLength, (i * 4), 1, keyA); // Verifica claves
+
+          if (success)
+          {
+
+            for (int x = 0; x < 3; x++)
             {
-              Serial.print("\n --------- \n Sector ");
-              Serial.print(i, DEC);
-              Serial.print("(Blocks ");
-              Serial.print(i * 4, DEC);
-              Serial.print("..");
-              Serial.print(i * 4 + 3, DEC);
-              Serial.println(") Autentificado");
-            }
 
-            success = nfc.mifareclassic_AuthenticateBlock(uid, uidLength, (i * 4), 1, key); // Verifica claves
-
-            if (success)
-            {
-
-              for (int x = 0; x < 3; x++)
+              uint8_t data[16];                                           // Declaracion de un array de tamaño 16
+              success = nfc.mifareclassic_ReadDataBlock(i * 4 + x, data); // Lectura bloque x del sector i
+              // vTaskDelay(200);
+              if (success)
               {
+                Serial.print("Lectura realizada del bloque ");
+                Serial.print(i * 4 + x, DEC);
+                Serial.print(": ");
+                nfc.PrintHexChar(data, 16); // Imprime lo que está escrito en el bloque x
 
-                uint8_t data[16];                                           // Declaracion de un array de tamaño 16
-                success = nfc.mifareclassic_ReadDataBlock(i * 4 + x, data); // Lectura bloque x del sector i
-                // vTaskDelay(200);
-                if (success)
+                // Verificar si abre puerta o si vacio
+                for (int y = 0; y <= 15; y = y + 2)
                 {
-                  Serial.print("Lectura realizada del bloque ");
-                  Serial.print(i * 4 + x, DEC);
-                  Serial.print(": ");
-                  nfc.PrintHexChar(data, 16); // Imprime lo que está escrito en el bloque x
-
-                  // Verificar si abre puerta o si vacio
-                  for (int y = 0; y <= 15; y = y + 2)
+                  uint8_t z = data[y];
+                  uint8_t p = data[y + 1];
+                  if (fini)
                   {
-                    uint8_t z = data[y];
-                    uint8_t p = data[y + 1];
+                    Serial.println("SEPARE LA TARJETA. En 3 segundos se podrá leer la tarjeta");
+                    vTaskDelay(3000);
+                    Serial.println("------- \n\n Esperando tarjeta ISO14443A ...");
+                    return;
+                  }
 
-                    if (z == ZONA.toInt() && (p == PUERTA.toInt() || p == 0x00))
-                    {
-                      // LLAMAR AQUÍ A LA FUNCION DE ABRIR LA PUERTA
-                      Serial.println("LECTURA CORRECTA. ABRIENDO PUERTA...");
-                      fini = 1;
-                      break; // cambiar indices para salir del bucle
-                    }
+                  if (z == ZONA.toInt() && (p == PUERTA.toInt() || p == 0x00))
+                  {
+                    // LLAMAR AQUÍ A LA FUNCION DE ABRIR LA PUERTA
+                    Serial.println("LECTURA CORRECTA. ABRIENDO PUERTA...");
+                    fini = 1;
+                    break;
                   }
                 }
-                else
-                {
-                  Serial.print("No es posible realizar la lectura del bloque ");
-                  Serial.println(i * 4 + x, DEC);
-                }
-                if (fini)
-                  break;
+              }
+              else
+              {
+                Serial.print("No es posible realizar la lectura del bloque ");
+                Serial.println(i * 4 + x, DEC);
               }
             }
-            else
-            {
-              Serial.print("La clave no es correcta para el sector ");
-              Serial.println(i, DEC);
-            }
-            if (fini)
-              break;
           }
+          else
+          {
+            Serial.print("La clave no es correcta para el sector ");
+            Serial.println(i, DEC);
+          }
+          if (fini)
+            break;
         }
+
+        Serial.println("SEPARE LA TARJETA. En 3 segundos se podrá leer la tarjeta");
+        vTaskDelay(3000);
+        Serial.println("------- \n\n Esperando tarjeta ISO14443A ...");
+      }
+      else
+      {
+        Serial.println("Tarjeta no compatible y/o vetada");
         Serial.println("SEPARE LA TARJETA. En 3 segundos se podrá leer la tarjeta");
         vTaskDelay(3000);
         Serial.println("------- \n\n Esperando tarjeta ISO14443A ...");
@@ -151,317 +176,29 @@ void TaskLeerNFC(void *pvParameters)
   }
 }
 
-void TaskWriteNFC(void *pvParameters)
+void TaskWaitToUids(void *pvParameters)
 {
-  Serial.println("Array paras: llega a antes de paras");
-
-  // Arreglar esto
-  String parametro = *((String *)pvParameters);
-  String tipo = parametro.substring(0, 1);
-  String contra = "";
-
-  if (tipo == "2")
-    contra = parametro.substring(2);
-
-  Serial.println("Array paras: tipo-> " + tipo + " Contraseña->" + contra);
-
-  // PONER PARA QUE SI ESTA CONFIGURADA LA PUERTA, SE CAMBIE A ZONA SI SE HA ELEGIDO ZONA
-
-  if (tipo == "0")
+  for (;;)
   {
-    unsigned long t0 = millis();
-    Serial.println("CREAR TARJETA NFC CON UBICACIÓN");
-    Serial.println("Esperando tarjeta NFC. Acerque la tarjeta. Se cancelará en 10s");
-    while ((millis() - t0) < 10000)
-    {
-      uint8_t success;                       // Control de success
-      uint8_t uid[] = {0, 0, 0, 0, 0, 0, 0}; // Buffer UID
-      uint8_t uidLength;                     // Tamaño de UID (4 o 7 bytes depende de tarjeta)
-      success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
-
-      if (success)
-      {
-        Serial.println("Found an ISO14443A card");
-        Serial.print("  UID Length: ");
-        Serial.print(uidLength, DEC);
-        Serial.println(" bytes");
-        Serial.print("  UID Value: ");
-        nfc.PrintHex(uid, uidLength); // Imprime el UID
-        Serial.println("");
-
-        if (uidLength == 4)
-        { // Verifica que la tarjeta es de 4 bytes
-          Serial.println("Tarjeta de 4 bytes");
-          uint8_t key[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // Clave
-
-          if (VerificaPass(nfc, uid, uidLength, key))
-          {
-            uint8_t fini = 0;
-            for (int i = 1; i <= 15; i++)
-            {
-              // Imprime por consola sector y bloques
-              {
-                Serial.print("\n --------- \n Sector ");
-                Serial.print(i, DEC);
-                Serial.print("(Blocks ");
-                Serial.print(i * 4, DEC);
-                Serial.print("..");
-                Serial.print(i * 4 + 3, DEC);
-                Serial.println(") Autentificado");
-              }
-
-              success = nfc.mifareclassic_AuthenticateBlock(uid, uidLength, (i * 4), 1, key); // Verifica claves
-
-              if (success)
-              {
-                for (int x = 0; x < 3; x++)
-                {
-
-                  uint8_t data[16];                                           // Declaracion de un array de tamaño 16
-                  success = nfc.mifareclassic_ReadDataBlock(i * 4 + x, data); // Lectura bloque x del sector i
-                  // vTaskDelay(200);
-                  if (success)
-                  {
-                    Serial.print("Lectura realizada del bloque ");
-                    Serial.print(i * 4 + x, DEC);
-                    Serial.print(": ");
-                    nfc.PrintHexChar(data, 16); // Imprime lo que está escrito en el bloque x
-
-                    // Verificar si abre puerta o si vacio
-                    for (int y = 0; y <= 15; y = y + 2)
-                    {
-                      uint8_t z = data[y];
-                      uint8_t p = data[y + 1];
-
-                      if (z == ZONA.toInt() && (p == PUERTA.toInt() || p == 0x00)) // Tarjeta ya tiene registrado la puerta
-                      {
-                        Serial.println("TARJETA YA CONFIGURADA PARA ABRIR ESTA PUERTA");
-                        fini = 1;
-                        break;
-                      }
-                      if (z == 0x00 && p == 0x00) // primer sitio de tarjeta que esté vacío
-                      {
-                        data[y] = ZONA.toInt();
-                        data[y + 1] = PUERTA.toInt();
-
-                        success = nfc.mifareclassic_WriteDataBlock(i * 4 + x, data); // Escribe en la tarjeta NFC
-
-                        if (success)
-                          Serial.println("Registrando");
-                        else
-                          Serial.println("No es posible registrar");
-
-                        fini = 1;
-                        break;
-                      }
-                    }
-                  }
-                  else
-                  {
-                    Serial.print("No es posible realizar la lectura del bloque ");
-                    Serial.println(i * 4 + x, DEC);
-                  }
-                  if (fini)
-                    break;
-                }
-              }
-              else
-              {
-                Serial.print("La clave no es correcta para el sector ");
-                Serial.println(i, DEC);
-              }
-              if (fini)
-                break;
-            }
-          }
-          else
-            Serial.println("Tarjeta no configurada con contraseña");
-        }
-        else
-          Serial.println("Tarjeta no válida");
-
-        break; // Salimos del bucle
-      }
-    }
+    vTaskDelay(pdMS_TO_TICKS(60 * 1000));
+    updateUidsVetados();
   }
-  if (tipo == "1")
-  {
-    unsigned long t0 = millis();
-    Serial.println("CREAR TARJETA NFC CON ZONA");
-    Serial.println("Esperando tarjeta NFC. Acerque la tarjeta. Se cancelará en 10s");
-    while ((millis() - t0) < 10000)
-    {
-      uint8_t success;                       // Control de success
-      uint8_t uid[] = {0, 0, 0, 0, 0, 0, 0}; // Buffer UID
-      uint8_t uidLength;                     // Tamaño de UID (4 o 7 bytes depende de tarjeta)
-      success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
-      if (success)
-      {
-        Serial.println("Found an ISO14443A card");
-        Serial.print("  UID Length: ");
-        Serial.print(uidLength, DEC);
-        Serial.println(" bytes");
-        Serial.print("  UID Value: ");
-        nfc.PrintHex(uid, uidLength); // Imprime el UID
-        Serial.println("");
+}
 
-        if (uidLength == 4)
-        { // Verifica que la tarjeta es de 4 bytes
-          Serial.println("Tarjeta de 4 bytes");
-          uint8_t key[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // Clave
+void TaskRotarMotor( void *pvParameters){
 
-          if (VerificaPass(nfc, uid, uidLength, key))
-          {
-            uint8_t fini = 0;
-            for (int i = 1; i <= 15; i++)
-            {
-              // Imprime por consola sector y bloques
-              {
-                Serial.print("\n --------- \n Sector ");
-                Serial.print(i, DEC);
-                Serial.print("(Blocks ");
-                Serial.print(i * 4, DEC);
-                Serial.print("..");
-                Serial.print(i * 4 + 3, DEC);
-                Serial.println(") Autentificado");
-              }
+  myStepper.setSpeed(50);
+  for(;;){
 
-              success = nfc.mifareclassic_AuthenticateBlock(uid, uidLength, (i * 4), 1, key); // Verifica claves
+    //Girar una vuelta entera en un sentido
+    Serial.println("Girando en un sentido...");
+    myStepper.step(250);
+    vTaskDelay(1000); 
 
-              if (success)
-              {
-                for (int x = 0; x < 3; x++)
-                {
-
-                  uint8_t data[16];                                           // Declaracion de un array de tamaño 16
-                  success = nfc.mifareclassic_ReadDataBlock(i * 4 + x, data); // Lectura bloque x del sector i
-                  // vTaskDelay(200);
-                  if (success)
-                  {
-                    Serial.print("Lectura realizada del bloque ");
-                    Serial.print(i * 4 + x, DEC);
-                    Serial.print(": ");
-                    nfc.PrintHexChar(data, 16); // Imprime lo que está escrito en el bloque x
-
-                    for (int y = 0; y <= 15; y = y + 2)
-                    {
-                      uint8_t z = data[y];
-                      uint8_t p = data[y + 1];
-
-                      if (z == ZONA.toInt()) // Tarjeta ya tiene registrado la puerta
-                      {
-                        if (p == PUERTA.toInt())
-                        {
-                          Serial.println("TARJETA YA CONFIGURADA PARA ABRIR ESTA PUERTA");
-                          data[y + 1] = 0x00;
-                          success = nfc.mifareclassic_WriteDataBlock(i * 4 + x, data); // Escribe en la tarjeta NFC
-
-                          if (success)
-                            Serial.println("ZONA AÑADIDA CON ÉXITO");
-                          else
-                            Serial.println("No es posible registrar");
-                        }
-                        if (p == 0x00)
-                          Serial.println("TARJETA YA CONFIGURADA PARA ABRIR ESTA ZONA");
-
-                        fini = 1;
-                        break;
-                      }
-                      if (z == 0x00 && p == 0x00) // primer sitio de tarjeta que esté vacío
-                      {
-                        data[y] = ZONA.toInt();
-                        data[y + 1] = 0x00;
-
-                        success = nfc.mifareclassic_WriteDataBlock(i * 4 + x, data); // Escribe en la tarjeta NFC
-
-                        if (success)
-                          Serial.println("ZONA AÑADIDA CON ÉXITO");
-                        else
-                          Serial.println("No es posible registrar");
-
-                        fini = 1;
-                        break;
-                      }
-                    }
-                  }
-                  else
-                  {
-                    Serial.print("No es posible realizar la lectura del bloque ");
-                    Serial.println(i * 4 + x, DEC);
-                  }
-                  if (fini)
-                    break;
-                }
-              }
-              else
-              {
-                Serial.print("La clave no es correcta para el sector ");
-                Serial.println(i, DEC);
-              }
-              if (fini)
-                break;
-            }
-          }
-          else
-            Serial.println("Tarjeta no configurada con contraseña");
-        }
-        else
-          Serial.println("Tarjeta no válida");
-        break;
-      }
-    }
+    Serial.println("Girando en el otro sentido...");
+    myStepper.step(-250);
+    vTaskDelay(1000);
   }
-  if (tipo == "2")
-  {
-    unsigned long t0 = millis();
-    Serial.println("CONFIGURAR TARJETA CON CONTRASEÑA");
-    Serial.println("Esperando tarjeta NFC. Acerque la tarjeta. Se cancelará en 10s");
-    while ((millis() - t0) < 10000)
-    {
-      uint8_t success;                       // Control de success
-      uint8_t uid[] = {0, 0, 0, 0, 0, 0, 0}; // Buffer UID
-      uint8_t uidLength;                     // Tamaño de UID (4 o 7 bytes depende de tarjeta)
-      success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
-      if (success)
-      {
-        Serial.println("Found an ISO14443A card");
-        Serial.print("  UID Length: ");
-        Serial.print(uidLength, DEC);
-        Serial.println(" bytes");
-        Serial.print("  UID Value: ");
-        nfc.PrintHex(uid, uidLength); // Imprime el UID
-        Serial.println("");
-
-        if (uidLength == 4)
-        { // Verifica que la tarjeta es de 4 bytes
-          Serial.println("Tarjeta de 4 bytes");
-          uint8_t key[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // Clave
-
-          success = nfc.mifareclassic_AuthenticateBlock(uid, uidLength, 4, 1, key);
-          if (success)
-          {
-            success = nfc.mifareclassic_WriteDataBlock(4, CONTRASENA); // Escribe en la tarjeta NFC
-
-            if (success)
-              Serial.println("Registrando");
-            else
-              Serial.println("No es posible registrar");
-          }
-          else
-            Serial.println("Fallo en la autenticación de bloque");
-        }
-        else
-          Serial.println("Tarjeta no válida");
-        break;
-      }
-    }
-  }
-
-  Serial.println("SEPARE LA TARJETA. En 3 segundos se podrá leer la tarjeta");
-  vTaskDelay(3000);
-  Serial.println("------- \n\n Esperando tarjeta ISO14443A ...");
-  vTaskResume(xLeerNFC);
-  vTaskDelete(xWriteNFC);
 }
 
 // FUNCIONES DE AYUDA
@@ -470,13 +207,33 @@ void initServer()
 
   Serial.println("Configuring access point...");
 
+  WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(SSID.c_str(), PASSWORD.c_str());
+  WiFi.begin(RouterSsid.c_str(), RouterPass.c_str());
+  Serial.println("Conectando...");
+  int i = 0;
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+    if (i == 10)
+    {
+      ESP.restart();
+    }
+    i++;
+  }
+  WiFi.setAutoReconnect(true);
+
+  Serial.println("");
+  Serial.print("Iniciado STA:\t");
+  Serial.println(RouterSsid);
+
   IPAddress myIP = WiFi.softAPIP();
   String h = IP + "/";
   server.serveStatic("/", SPIFFS, "/").setDefaultFile("WebServer.html");
   server.on("/changeSSID", HTTP_POST, procSSID);
   server.on("/location", HTTP_POST, procLocation);
-  server.on("/createNFC", HTTP_POST, procCreateNFC);
+  server.on("/changePass", HTTP_POST, procPass);
   server.onNotFound([](AsyncWebServerRequest *request)
                     { request->send(400, "text/plain", "Not found"); });
 
@@ -519,72 +276,110 @@ void InicializarVariables()
   }
   if (!SPIFFS.exists("/CONTRASENA.txt"))
   {
-    writeFile(SPIFFS, "/CONTRASENA.txt", "predeterminado");
+    writeFile(SPIFFS, "/CONTRASENA.txt", "FFFFFFFFFFFFFFFFFFFFFFFF");
   }
-  
+  if (!SPIFFS.exists("/UIDsVetados.txt"))
+  {
+    writeFile(SPIFFS, "/UIDsVetados.txt", "");
+  }
+
   answerNoModif = readFile(SPIFFS, "/NoModif.html");
   answer = readFile(SPIFFS, "/WebServer.html");
   SSID = readFile(SPIFFS, "/SSID.txt");
   PASSWORD = readFile(SPIFFS, "/PASS.txt");
   ZONA = readFile(SPIFFS, "/ZONE.txt");
   PUERTA = readFile(SPIFFS, "/DOOR.txt");
+  uidsVetados = readFile(SPIFFS, "/UIDsVetados.txt");
+  procContrasena(readFile(SPIFFS, "/CONTRASENA.txt"));
 
-  //Se borraría en producto final
+  Serial.print("Uids vetados:");
+  Serial.println(uidsVetados);
+
+  // Se borraría en producto final
   Serial.print("PASS: ");
   Serial.println(PASSWORD);
   Serial.print("ZONA ACTUAL: ");
   Serial.println(ZONA);
   Serial.print("PUERTA ACTUAL: ");
   Serial.println(PUERTA);
-  Serial.print("CONTRA: ");
-  nfc.PrintHex(CONTRASENA, 4);
-
+  Serial.println("CONTRAS: ");
+  nfc.PrintHex(CONTRASENA, 12);
+  nfc.PrintHex(keyA, 6);
+  nfc.PrintHex(keyB, 6);
 }
 
-int VerificaPass(PN532 nfc, uint8_t uid[7], uint8_t uidLength, uint8_t key[6])
+void procContrasena(String input)
 {
-  Serial.println("\n\n VERIFICANDO....");
-
-  uint8_t success = nfc.mifareclassic_AuthenticateBlock(uid, uidLength, 4, 1, key);
-  if (success)
+  const char *hexString = input.c_str();
+  for (int i = 0; i < 24; i += 2)
   {
-    uint8_t data[16];
-    success = nfc.mifareclassic_ReadDataBlock(4, data);
-    if (success)
+    char hex[3] = {toupper(hexString[i]), toupper(hexString[i + 1]), '\0'};
+    CONTRASENA[i / 2] = strtoul(hex, NULL, 16);
+  }
+  for (int i = 0; i < 12; i += 1)
+  {
+    if (i < 6)
+      keyA[i] = CONTRASENA[i];
+    else
+      keyB[i - 6] = CONTRASENA[i];
+  }
+}
+
+void updateUidsVetados()
+{
+  WiFiClient client;
+  if (client.connect(serverAddress.c_str(), serverPort))
+  {
+    client.println("GET /uids HTTP/1.1");
+    client.println("Host: " + String(serverAddress));
+    client.println("Connection: close");
+    client.println();
+
+    // Leer y procesar la respuesta del servidor
+    while (client.connected() && !client.available())
     {
-      // arreglar esto porque no va bien xd
-      for (int i = 0; i < 16; i++)
-      {
-        success = data[i] == CONTRASENA[i];
-        if (!success)
-          break;
-      }
-
-      if (success)
-      {
-        Serial.println("TARJETA CONFIGURADA CORRECTAMENTE \n\n");
-        return 1;
-      }
-      else
-      {
-        Serial.println("Tarjeta NO configurada \n\n");
-
-        return 0;
-      }
+      delay(100);
+    }
+    String newUids;
+    while (client.available())
+    { // Procesar la línea de la respuesta del servidor
+      String line = client.readStringUntil('\n');
+      newUids = line.substring(0, line.length() - 1);
+    }
+    if (newUids == "")
+    {
+      Serial.println("Respuesta del servidor vacío");
     }
     else
     {
-      Serial.println("Fallo en lectura de bloque verificación");
-      return 0;
+      uidsVetados = newUids;
+      writeFile(SPIFFS, "/UIDsVetados.txt", (char *)uidsVetados.c_str());
+      Serial.print("Uids vetados actualizados: ");
+      Serial.println(uidsVetados);
     }
   }
   else
-  {
-    Serial.println("Fallo en autenticacion de bloque verificación");
-    return 0;
-  }
+    Serial.println("Error al conectar al servidor");
+
+  client.stop();
+  Serial.println("Conexión cerrada");
 }
 
+boolean estaUidVetado(uint8_t uid[], uint8_t UidLength)
+{
+
+  char valor[3];
+  String uidS = "";
+  for (int i = 0; i < UidLength; i++)
+  {
+    sprintf(valor, "%02X", uid[i]);
+    uidS += valor;
+  }
+  if (strstr(uidsVetados.c_str(), uidS.c_str()) != NULL)
+    return true;
+  else
+    return false;
+}
 
 // PROCESAR API's
 
@@ -654,19 +449,17 @@ void procLocation(AsyncWebServerRequest *request)
   request->send(200, "text/html", answerNoModif);
 }
 
-// Lee la tarjeta, si tiene la misma zona y puerta pues no se graba nada, si no, se añade
-// Lo suyo es que tenga un buzzer, pite para "decir estoy preparado" y pite largo cuando se esté leyendo (con leds que se enciendan en fila)
-void procCreateNFC(AsyncWebServerRequest *request)
+void procPass(AsyncWebServerRequest *request)
 {
-  vTaskSuspend(xLeerNFC); // Suspendemos tarea de lectura
+  String cont = request->arg("pass");
 
-  String para = request->arg("type") + "," + request->arg("pass");
+  if (cont.length() != 24)
+  {
+    Serial.println("Contraseña vacía o mayor");
+    return;
+  }
+  procContrasena(cont);
+  writeFile(SPIFFS, "/CONTRASENA.txt", cont.c_str());
 
-  xTaskCreate(
-      TaskWriteNFC, "TaskWriteNFC", // Creamos tarea de escritura (hay que copiar lo de abajo y que se automate la tarea)
-      4096,
-      &para, 1,
-      &xWriteNFC);
-
-  request->send(200, "text/html", pagTjPass);
+  request->send(200, "text/html", answerNoModif);
 }
