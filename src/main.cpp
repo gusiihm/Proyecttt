@@ -2,9 +2,8 @@
 
 void setup()
 {
-  //PIXELES APAGADOS DE PRIMERAS
-  pixels.setPixelColor(0, pixels.Color(0, 0, 0));
-  pixels.show();
+  // PIXELES APAGADOS DE PRIMERAS
+  encenderLed(0, 0, 0, 0);
 
   Serial.begin(115200);
 
@@ -29,28 +28,25 @@ void setup()
   InicializarVariables();
   initServer();
 
+  myStepper.setSpeed(50);
+
+  pinMode(13, INPUT_PULLUP);
+  attachInterrupt(13, buttonFunction, FALLING);
+
   xTaskCreate(
       TaskLeerNFC, "TaskLeerNFC",
       4096,
-      NULL, 1,
+      NULL, 4,
       &xLeerNFC);
   xTaskCreate(
       TaskWaitToUids, "TaskWaitToUids",
       4096,
-      NULL, 1,
-      NULL);
-    xTaskCreate(
-      TaskRotarMotor, "TaskRotarMotor",
-      4096,
-      NULL, 1,
-      NULL);
+      NULL, 5,
+      &xWaitToUids);
 
-  //se enciende azul para decir que está correcto
-  pixels.setPixelColor(0, pixels.Color(0, 0, 150));
-  pixels.show();
-  vTaskDelay(1000);
-  pixels.setPixelColor(0, pixels.Color(0, 0, 0));
-  pixels.show();
+  // se enciende azul para decir que está correcto
+  encenderLed(0, 0, 150, 1000);
+  encenderLed(0, 0, 0, 0);
 }
 
 void loop() {}
@@ -58,10 +54,10 @@ void loop() {}
 // TAREAS
 void TaskLeerNFC(void *pvParameters)
 {
-  nfc.begin();                                     // Inicializa o modulo
-  uint32_t versiondata = nfc.getFirmwareVersion(); // Obtém informações sobre o modulo
+  nfc.begin();                                     // Inicializa el modulo
+  uint32_t versiondata = nfc.getFirmwareVersion(); // Obten la version del módulo
   if (!versiondata)
-  { // Verifica se a placa foi encontrada
+  { // Verifica si se ha encontrado al placa
     Serial.print("Placa PN53x no encontrada lectura nfc");
   }
   Serial.print("Found chip PN5");
@@ -72,6 +68,7 @@ void TaskLeerNFC(void *pvParameters)
   Serial.println((versiondata >> 8) & 0xFF, DEC);
   nfc.SAMConfig(); // Configura el módulo RFID para la lectura
   Serial.println("Esperando tarjeta ISO14443A ...");
+
   for (;;)
   {
     uint8_t success;                       // Controle de sucesso
@@ -90,12 +87,15 @@ void TaskLeerNFC(void *pvParameters)
       nfc.PrintHex(uid, uidLength); // Imprime el UID
       Serial.println("");
       if (uidLength == 4 && !estaUidVetado(uid, uidLength))
-      { // Verifica que la tarjeta es de 4 bytes
+      { // Verifica que la tarjeta es de 4 bytes y no esté vetada
+        Serial.println("LEYENDO...");
         uint8_t fini = 0;
-        for (int i = 1; i <= 15; i++)
+        for (int i = 0; i <= 15; i++)
         {
+          if (fini)
+            break;
           // Imprime por consola sector y bloques
-          {
+          /*{
             Serial.print("\n --------- \n Sector ");
             Serial.print(i, DEC);
             Serial.print("(Blocks ");
@@ -103,43 +103,50 @@ void TaskLeerNFC(void *pvParameters)
             Serial.print("..");
             Serial.print(i * 4 + 3, DEC);
             Serial.println(") Autentificado");
-          }
+          }*/
 
           success = nfc.mifareclassic_AuthenticateBlock(uid, uidLength, (i * 4), 1, keyA); // Verifica claves
 
           if (success)
           {
-
             for (int x = 0; x < 3; x++)
             {
+              if (fini)
+                break;
+
+              if (x == 0 && x == 0)
+                continue;
 
               uint8_t data[16];                                           // Declaracion de un array de tamaño 16
               success = nfc.mifareclassic_ReadDataBlock(i * 4 + x, data); // Lectura bloque x del sector i
-              // vTaskDelay(200);
               if (success)
               {
-                Serial.print("Lectura realizada del bloque ");
+
+                /*Serial.print("Lectura realizada del bloque ");
                 Serial.print(i * 4 + x, DEC);
                 Serial.print(": ");
                 nfc.PrintHexChar(data, 16); // Imprime lo que está escrito en el bloque x
+                */
 
                 // Verificar si abre puerta o si vacio
                 for (int y = 0; y <= 15; y = y + 2)
                 {
+                  if (fini)
+                    break;
+
                   uint8_t z = data[y];
                   uint8_t p = data[y + 1];
-                  if (fini)
-                  {
-                    Serial.println("SEPARE LA TARJETA. En 3 segundos se podrá leer la tarjeta");
-                    vTaskDelay(3000);
-                    Serial.println("------- \n\n Esperando tarjeta ISO14443A ...");
-                    return;
-                  }
 
                   if (z == ZONA.toInt() && (p == PUERTA.toInt() || p == 0x00))
                   {
-                    // LLAMAR AQUÍ A LA FUNCION DE ABRIR LA PUERTA
-                    Serial.println("LECTURA CORRECTA. ABRIENDO PUERTA...");
+                    Serial.println("LECTURA CORRECTA.");
+                    if (botonPulsado)
+                    {
+                      posibleAbrir = 1;
+                      botonPulsado = 0;
+                    }
+                    else
+                      AbrirPuerta();
                     fini = 1;
                     break;
                   }
@@ -157,8 +164,14 @@ void TaskLeerNFC(void *pvParameters)
             Serial.print("La clave no es correcta para el sector ");
             Serial.println(i, DEC);
           }
-          if (fini)
-            break;
+        }
+
+        if (!fini) // No se ha abierto la puerta
+        {
+          encenderLed(150, 0, 0, 300);
+          encenderLed(0, 0, 0, 300);
+          encenderLed(150, 0, 0, 300);
+          encenderLed(0, 0, 0, 0);
         }
 
         Serial.println("SEPARE LA TARJETA. En 3 segundos se podrá leer la tarjeta");
@@ -167,12 +180,19 @@ void TaskLeerNFC(void *pvParameters)
       }
       else
       {
+        encenderLed(150, 0, 0, 300);
+        encenderLed(0, 0, 0, 300);
+        encenderLed(150, 0, 0, 300);
+        encenderLed(0, 0, 0, 0);
+
         Serial.println("Tarjeta no compatible y/o vetada");
         Serial.println("SEPARE LA TARJETA. En 3 segundos se podrá leer la tarjeta");
         vTaskDelay(3000);
         Serial.println("------- \n\n Esperando tarjeta ISO14443A ...");
       }
     }
+
+    vTaskDelay(500); // Pausamos para que funcionen otras tareas
   }
 }
 
@@ -180,28 +200,71 @@ void TaskWaitToUids(void *pvParameters)
 {
   for (;;)
   {
-    vTaskDelay(pdMS_TO_TICKS(60 * 1000));
+    vTaskDelay(timeToupdateUids * 1000);
     updateUidsVetados();
   }
 }
 
-void TaskRotarMotor( void *pvParameters){
-
-  myStepper.setSpeed(50);
-  for(;;){
-
-    //Girar una vuelta entera en un sentido
-    Serial.println("Girando en un sentido...");
-    myStepper.step(250);
-    vTaskDelay(1000); 
-
-    Serial.println("Girando en el otro sentido...");
-    myStepper.step(-250);
-    vTaskDelay(1000);
+void TaskButton(void *pvParameters)
+{
+  Serial.println("BOTÓN PULSADO");
+  detachInterrupt(13);
+  if (posibleAbrir)
+  {
+    posibleAbrir = 0;
+    botonPulsado = 0;
+    Serial.println("Abrir/Cerrar por boton");
+    AbrirPuerta();
   }
+  else
+  {
+    botonPulsado = 1;
+    for (int i = 0; i < 10; i++)
+    {
+      encenderLed(0, 0, 150, 500);
+      encenderLed(0, 0, 0, 500);
+      if (posibleAbrir)
+        break;
+    }
+    if (!posibleAbrir)
+      Serial.println("Tiempo de espera acabado");
+    botonPulsado = 0;
+  }
+  attachInterrupt(13, buttonFunction, FALLING);
+  tareaCreada = 0;
+  vTaskDelete(xButton);
 }
 
 // FUNCIONES DE AYUDA
+
+void encenderLed(int R, int G, int B, int time)
+{
+  pixels.setPixelColor(0, pixels.Color(R, G, B));
+  pixels.show();
+  if (time != 0)
+    vTaskDelay(time);
+}
+
+void AbrirPuerta()
+{
+  encenderLed(0, 150, 0, 300);
+  encenderLed(0, 0, 0, 0);
+
+  if (lockState)
+  {
+    Serial.println("Abriendo puerta...");
+    myStepper.step(250);
+    lockState = 0;
+  }
+  else
+  {
+    Serial.println("Cerrando puerta...");
+    myStepper.step(-250);
+    lockState = 1;
+  }
+  vTaskDelay(2000);
+}
+
 void initServer()
 {
 
@@ -212,21 +275,28 @@ void initServer()
   WiFi.begin(RouterSsid.c_str(), RouterPass.c_str());
   Serial.println("Conectando...");
   int i = 0;
-  while (WiFi.status() != WL_CONNECTED)
+  while ((i < 5) && (WiFi.status() != WL_CONNECTED))
   {
     delay(500);
     Serial.print(".");
-    if (i == 10)
+    /*if (i == 10)
     {
       ESP.restart();
-    }
+    }*/
     i++;
   }
   WiFi.setAutoReconnect(true);
-
-  Serial.println("");
-  Serial.print("Iniciado STA:\t");
-  Serial.println(RouterSsid);
+  if (i < 5)
+  {
+    Serial.println("");
+    Serial.print("Iniciado STA:\t");
+    Serial.println(RouterSsid);
+  }
+  else
+  {
+    Serial.println("");
+    Serial.println("La red " + RouterSsid + " no es accesible");
+  }
 
   IPAddress myIP = WiFi.softAPIP();
   String h = IP + "/";
@@ -282,6 +352,10 @@ void InicializarVariables()
   {
     writeFile(SPIFFS, "/UIDsVetados.txt", "");
   }
+  if (!SPIFFS.exists("/LOCKSTATE.txt"))
+  {
+    writeFile(SPIFFS, "/LOCKSTATE.txt", "1");
+  }
 
   answerNoModif = readFile(SPIFFS, "/NoModif.html");
   answer = readFile(SPIFFS, "/WebServer.html");
@@ -289,8 +363,9 @@ void InicializarVariables()
   PASSWORD = readFile(SPIFFS, "/PASS.txt");
   ZONA = readFile(SPIFFS, "/ZONE.txt");
   PUERTA = readFile(SPIFFS, "/DOOR.txt");
-  uidsVetados = readFile(SPIFFS, "/UIDsVetados.txt");
   procContrasena(readFile(SPIFFS, "/CONTRASENA.txt"));
+  uidsVetados = readFile(SPIFFS, "/UIDsVetados.txt");
+  lockState = (readFile(SPIFFS, "/LOCKSTATE.txt")).toInt();
 
   Serial.print("Uids vetados:");
   Serial.println(uidsVetados);
@@ -327,6 +402,9 @@ void procContrasena(String input)
 
 void updateUidsVetados()
 {
+  vTaskSuspend(xLeerNFC); // Suspendemos tarea de lectura
+  Serial.println("Conectando con servidor...");
+  encenderLed(150, 0, 0, 300);
   WiFiClient client;
   if (client.connect(serverAddress.c_str(), serverPort))
   {
@@ -363,6 +441,11 @@ void updateUidsVetados()
 
   client.stop();
   Serial.println("Conexión cerrada");
+  encenderLed(0, 0, 0, 300);
+  encenderLed(0, 150, 0, 300);
+  encenderLed(0, 0, 0, 0);
+
+  vTaskResume(xLeerNFC);
 }
 
 boolean estaUidVetado(uint8_t uid[], uint8_t UidLength)
@@ -379,6 +462,19 @@ boolean estaUidVetado(uint8_t uid[], uint8_t UidLength)
     return true;
   else
     return false;
+}
+
+void IRAM_ATTR buttonFunction()
+{
+  if (!tareaCreada)
+  {
+    xTaskCreate(
+        TaskButton, "TaskButton",
+        4096,
+        NULL, 6,
+        &xButton);
+    tareaCreada = 1;
+  }
 }
 
 // PROCESAR API's

@@ -20,7 +20,7 @@
 #define FORMAT_SPIFFS_IF_FAILED true
 
 // Variables PN532
-uint8_t DatoRecibido[4];     // Para almacenar los datos
+uint8_t DatoRecibido[4];	 // Para almacenar los datos
 PN532_HSU pn532hsu(Serial2); // Declara objeto de comunicação utilizando Serial2
 PN532 nfc(pn532hsu);
 
@@ -43,22 +43,25 @@ String uidsVetados = "";
 uint8_t keyA[6]; // ClaveA
 uint8_t keyB[6]; // ClaveB
 uint8_t CONTRASENA[12];
-
-//LED
-Adafruit_NeoPixel pixels(1, 14, NEO_GRB + NEO_KHZ800);
+int timeToupdateUids = 30;
+// LED
+Adafruit_NeoPixel pixels(1, 14, NEO_RGB + NEO_KHZ800);
 
 // Variables motor
 const int stepsPerRevolution = 400;
 Stepper myStepper(stepsPerRevolution, 33, 25, 26, 27);
-
+int lockState; // 0 cerrada -- 1 abierta
+int botonPulsado = 0;
+int posibleAbrir = 0;
+int tareaCreada = 0;
 
 // Declaracion de funciones/tareas
 void TaskLeerNFC(void *pvParameters);
-void TaskWriteNFC(void *pvParameters);
 void TaskWaitToUids(void *pvParameters);
-void TaskRotarMotor(void *pvParameters);
+void TaskButton(void *pvParameters);
 xTaskHandle xLeerNFC;
-xTaskHandle xWriteNFC;
+xTaskHandle xWaitToUids;
+xTaskHandle xButton;
 void InicializarVariables();
 void procSSID(AsyncWebServerRequest *request);
 void procLocation(AsyncWebServerRequest *request);
@@ -67,13 +70,15 @@ void procPass(AsyncWebServerRequest *request);
 void procContrasena(String input);
 void initServer();
 void updateUidsVetados();
+void AbrirPuerta();
 boolean estaUidVetado(uint8_t uid[], uint8_t UidLength);
-void handleConnectionRoot(AsyncWebServerRequest *request);
+void IRAM_ATTR buttonFunction();
+void encenderLed(int R, int G, int B, int time);
 
 // para redirigir
 static String paginaNoModif = "<!DOCTYPE html>\
 <meta http-equiv='refresh' content='1; url=" +
-                              IP + "/' />\
+							  IP + "/' />\
 <html>\
 <body>\
     <h2>REDIRIGIENDO...</h2>\
@@ -82,7 +87,7 @@ static String paginaNoModif = "<!DOCTYPE html>\
 
 static String pagTjPass = "<!DOCTYPE html>\
 <meta http-equiv='refresh' content='10; url=" +
-                              IP + "/' />\
+						  IP + "/' />\
 <html>\
 <body>\
     <h2>Esperando tarjeta NFC. Acerque la tarjeta...</h2>\
