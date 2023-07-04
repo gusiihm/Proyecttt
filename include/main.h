@@ -18,7 +18,7 @@
 #include <Adafruit_NeoPixel.h>
 
 #define FORMAT_SPIFFS_IF_FAILED true
-
+#define TIME_RECONECT  3600
 // Variables PN532
 uint8_t DatoRecibido[4];	 // Para almacenar los datos
 PN532_HSU pn532hsu(Serial2); // Declara objeto de comunicação utilizando Serial2
@@ -59,9 +59,13 @@ int tareaCreada = 0;
 void TaskLeerNFC(void *pvParameters);
 void TaskWaitToUids(void *pvParameters);
 void TaskButton(void *pvParameters);
+void TimerReconect_wifi(void *arg);
+
 xTaskHandle xLeerNFC;
 xTaskHandle xWaitToUids;
 xTaskHandle xButton;
+TimerHandle_t handle_Wifikeepalive=NULL;
+
 void InicializarVariables();
 void procSSID(AsyncWebServerRequest *request);
 void procLocation(AsyncWebServerRequest *request);

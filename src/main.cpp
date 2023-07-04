@@ -28,6 +28,9 @@ void setup()
   InicializarVariables();
   initServer();
 
+  handle_Wifikeepalive = xTimerCreate("reconect wifi",(TIME_RECONECT * 1000), pdTRUE, NULL, TimerReconect_wifi);
+  xTimerStart(handle_Wifikeepalive, 10);
+  
   myStepper.setSpeed(50);
 
   pinMode(13, INPUT_PULLUP);
@@ -558,4 +561,30 @@ void procPass(AsyncWebServerRequest *request)
   writeFile(SPIFFS, "/CONTRASENA.txt", cont.c_str());
 
   request->send(200, "text/html", answerNoModif);
+}
+///////////////////////////////////////////////////////
+/* wifi keepa alive*/
+////
+
+void TimerReconect_wifi(void *arg)
+{
+  if ((WiFi.status() != WL_CONNECTED))
+  {
+    WiFi.disconnect();
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP(SSID.c_str(), PASSWORD.c_str());
+    WiFi.begin(RouterSsid.c_str(), RouterPass.c_str());
+    Serial.println("Conectando...");
+    int i = 0;
+    while ((i < 5) && (WiFi.status() != WL_CONNECTED))
+    {
+      delay(500);
+      Serial.print(".");
+      /*if (i == 10)
+      {
+        ESP.restart();
+      }*/
+      i++;
+    }
+  }
 }
